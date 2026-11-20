@@ -6,6 +6,8 @@ export const MAX_REMOTE_SOURCE_RESPONSE_BYTES = 2 * 1024 * 1024;
 export const MAX_REMOTE_SOURCE_TOTAL_BYTES = 12 * 1024 * 1024;
 export const MAX_FLOW_RESPONSE_BYTES = 64 * 1024;
 export const MAX_DOH_RESPONSE_BYTES = 64 * 1024;
+export const MAX_RULE_PROVIDER_BYTES = 1024 * 1024;
+export const MAX_RULE_PROVIDER_TOTAL_BYTES = 4 * 1024 * 1024;
 // D1 rejects strings and rows larger than ~2,000,000 bytes, so stay below that.
 export const MAX_D1_TEXT_BYTES = 1_900_000;
 

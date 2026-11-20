@@ -356,6 +356,100 @@ describe("target renderers", () => {
   });
 });
 
+describe("rule provider inlining", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const content = `vless://${UUID}@v.example.com:443?security=tls&sni=v.example.com#node`;
+
+  function template(ruleProviders: Record<string, unknown>, extra: Record<string, unknown> = {}) {
+    return { config: { ruleProviders, ...extra } };
+  }
+
+  function mockProviders(prefix: string) {
+    return vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === `https://${prefix}.example/yaml.yaml`) {
+        return new Response("payload:\n  - DOMAIN-SUFFIX,openai.com\n  - +.anthropic.com\n");
+      }
+      if (url === `https://${prefix}.example/list.list`) {
+        return new Response("# comment\n\ndomain:example.com\nDOMAIN-KEYWORD,foo\n");
+      }
+      return new Response("boom", { status: 500 });
+    });
+  }
+
+  function providers(prefix: string) {
+    return {
+      yaml: { type: "http", behavior: "domain", url: `https://${prefix}.example/yaml.yaml`, path: "./ruleset/yaml.yaml", interval: 86400 },
+      text: { type: "http", behavior: "classical", url: `https://${prefix}.example/list.list`, path: "./ruleset/list.list", interval: 86400 },
+      broken: { type: "http", behavior: "ipcidr", url: `https://${prefix}.example/broken.yaml`, path: "./ruleset/broken.yaml", interval: 86400 },
+      local: { type: "file", behavior: "classical", path: "./ruleset/local.yaml" },
+    };
+  }
+
+  function ruleProvidersOf(result: { content: string }) {
+    const document = parseYaml(result.content) as { "rule-providers": Record<string, Node> };
+    return document["rule-providers"];
+  }
+
+  it("expands http rule providers into inline payloads for mihomo output", async () => {
+    const fetchMock = mockProviders("inline");
+    const result = await convertSubscriptionContent({
+      content,
+      target: "mihomo",
+      template: template(providers("inline"), { inlineRuleProviders: true }),
+    });
+    const ruleProviders = ruleProvidersOf(result);
+
+    expect(ruleProviders.yaml).toEqual({
+      type: "inline",
+      behavior: "domain",
+      payload: ["DOMAIN-SUFFIX,openai.com", "+.anthropic.com"],
+    });
+    expect(ruleProviders.text).toEqual({
+      type: "inline",
+      behavior: "classical",
+      payload: ["domain:example.com", "DOMAIN-KEYWORD,foo"],
+    });
+    expect(ruleProviders.broken).toMatchObject({ type: "http", url: "https://inline.example/broken.yaml" });
+    expect(ruleProviders.local).toEqual({ type: "file", behavior: "classical", path: "./ruleset/local.yaml" });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("can be switched on through app settings for built-in templates", async () => {
+    const fetchMock = mockProviders("settings");
+    const result = await convertSubscriptionContent({
+      content,
+      target: "mihomo",
+      template: template(providers("settings")),
+      settings: { inlineRuleProviders: true },
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(ruleProvidersOf(result).yaml).toMatchObject({ type: "inline", behavior: "domain" });
+  });
+
+  it("leaves rule providers untouched when inlining is disabled or the target is not mihomo", async () => {
+    const directMock = mockProviders("disabled");
+    const disabled = await convertSubscriptionContent({
+      content,
+      target: "mihomo",
+      template: template(providers("disabled"), { inlineRuleProviders: false }),
+    });
+    expect(directMock).not.toHaveBeenCalled();
+    expect(ruleProvidersOf(disabled).yaml).toMatchObject({ type: "http" });
+
+    const stashMock = mockProviders("stash");
+    const stash = await convertSubscriptionContent({
+      content,
+      target: "stash",
+      template: template(providers("stash"), { inlineRuleProviders: true }),
+    });
+    expect(stashMock).not.toHaveBeenCalled();
+    expect(ruleProvidersOf(stash).yaml).toMatchObject({ type: "http" });
+  });
+});
+
 describe("response metadata and naming", () => {
   afterEach(() => vi.restoreAllMocks());
 
