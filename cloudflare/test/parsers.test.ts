@@ -339,6 +339,21 @@ describe("target renderers", () => {
     expect(proxy("trojan-ws")).toMatchObject({ network: "ws", "ws-opts": { path: "/t" } });
     expect(proxy("hy2-range").ports).toBe("20000-30000");
   });
+
+  it("enables X25519MLKEM768 on vless reality options by default", async () => {
+    const reality = `vless://${UUID}@v.example.com:443?security=reality&pbk=PUBKEY&sid=abcd1234&sni=www.example.com`;
+    const [enabled, disabled] = parseNodes([
+      `${reality}#reality-default`,
+      `${reality}&support-x25519mlkem768=0#reality-off`,
+    ].join("\n"));
+
+    expect((enabled["reality-opts"] as Node)["support-x25519mlkem768"]).toBe(true);
+    expect((disabled["reality-opts"] as Node)["support-x25519mlkem768"]).toBeUndefined();
+
+    const result = await convertSubscriptionContent({ content: `${reality}#reality-out`, target: "mihomo" });
+    const document = parseYaml(result.content) as { proxies: Node[] };
+    expect((document.proxies[0]["reality-opts"] as Node)["support-x25519mlkem768"]).toBe(true);
+  });
 });
 
 describe("response metadata and naming", () => {

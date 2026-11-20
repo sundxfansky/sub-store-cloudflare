@@ -923,6 +923,9 @@ function parseVless(line: string, index: number): ProxyNode {
   const hasTlsHint = ["sni", "fp", "alpn", "allowInsecure", "insecure"].some((key) => params.has(key));
   const security = (params.get("security") || (publicKey ? "reality" : hasTlsHint ? "tls" : "none")).toLowerCase();
   const tls = security !== "none";
+  // Mihomo negotiates the post-quantum X25519MLKEM768 hybrid with REALITY servers by default here;
+  // share links rarely carry the flag, so opt out through the URI instead of opt in.
+  const x25519mlkem768 = optionBoolean(params.get("support-x25519mlkem768"));
 
   return stripUndefined({
     name: uriName(url, `vless-${index + 1}`),
@@ -939,7 +942,12 @@ function parseVless(line: string, index: number): ProxyNode {
     "skip-cert-verify": insecureParam(params),
     encryption: params.get("encryption") || "none",
     "client-fingerprint": tls ? params.get("fp") || "chrome" : undefined,
-    "reality-opts": tls && publicKey ? stripUndefined({ "public-key": publicKey, "short-id": shortId, "spider-x": params.get("spx") || "/" }) : undefined,
+    "reality-opts": tls && publicKey ? stripUndefined({
+      "public-key": publicKey,
+      "short-id": shortId,
+      "spider-x": params.get("spx") || "/",
+      "support-x25519mlkem768": x25519mlkem768 === false ? undefined : true,
+    }) : undefined,
   });
 }
 
